@@ -1,0 +1,30 @@
+{
+  "project_info": {
+    "project_number": "703615843516",
+    "firebase_url": "https://lab5-27e91-default-rtdb.europe-west1.firebasedatabase.app",
+    "project_id": "lab5-27e91",
+    "storage_bucket": "lab5-27e91.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:703615843516:android:03fab6c6021f02e8ace4b9",
+        "android_client_info": {
+          "package_name": "com.example.moto_manager_mobile"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD1_RCCGVYaTHhevwcFDWsb5IsV4Kl5Hjg"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
