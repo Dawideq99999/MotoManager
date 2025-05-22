@@ -3,32 +3,39 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
+// Główny ekran zarządzania autami użytkownika
 class CarDashboardScreen extends StatefulWidget {
   const CarDashboardScreen({super.key});
   @override
   State<CarDashboardScreen> createState() => _CarDashboardScreenState();
 }
 
+// Klasa ze stanem (logika i zmienne ekranu)
 class _CarDashboardScreenState extends State<CarDashboardScreen> with TickerProviderStateMixin {
+  // Referencje do baz danych Firebase
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
 
+  // Kontrolery do formularza dodawania/edycji auta
   final _brandCtl = TextEditingController();
   final _insuranceCtl = TextEditingController();
   final _modelCtl = TextEditingController();
   final _serviceCtl = TextEditingController();
   final _yearCtl = TextEditingController();
 
+  // Lista dostępnych rodzajów paliwa
   final _fuelTypes = ['Benzyna', 'Diesel', 'Elektryczny', 'Hybryda'];
-  String? _selectedFuel;
+  String? _selectedFuel; // Aktualnie wybrany rodzaj paliwa
 
-  bool _isEditing = false;
-  String? _editingDocId;
-  int _selectedIndex = 0; // Ustawiamy na "Samochody"
+  bool _isEditing = false; // Czy tryb edycji auta?
+  String? _editingDocId;   // ID edytowanego auta
+  int _selectedIndex = 0;  // Aktualna zakładka menu
 
+  // Kontrolery animacji (do efektu konfetti po dodaniu auta)
   late AnimationController _screenController;
   late AnimationController _confettiController;
 
+  // Inicjalizacja kontrolerów animacji
   @override
   void initState() {
     super.initState();
@@ -42,6 +49,7 @@ class _CarDashboardScreenState extends State<CarDashboardScreen> with TickerProv
     );
   }
 
+  // Zwolnienie pamięci po zamknięciu widoku
   @override
   void dispose() {
     _screenController.dispose();
@@ -54,6 +62,7 @@ class _CarDashboardScreenState extends State<CarDashboardScreen> with TickerProv
     super.dispose();
   }
 
+  // Pobieranie aut użytkownika z bazy Firestore
   Future<List<QueryDocumentSnapshot<Map<String, dynamic>>>> _fetchCars() async {
     final uid = _auth.currentUser?.uid;
     if (uid == null) return [];
@@ -61,6 +70,7 @@ class _CarDashboardScreenState extends State<CarDashboardScreen> with TickerProv
     return snap.docs;
   }
 
+  // Czyszczenie formularza i reset stanu dodawania/edycji
   void _clear() {
     _brandCtl.clear();
     _insuranceCtl.clear();
@@ -72,6 +82,7 @@ class _CarDashboardScreenState extends State<CarDashboardScreen> with TickerProv
     _editingDocId = null;
   }
 
+  // Zapis auta do bazy (dodanie/edycja)
   Future<void> _saveCar() async {
     final brand = _brandCtl.text.trim();
     final insurance = _insuranceCtl.text.trim();
@@ -80,6 +91,7 @@ class _CarDashboardScreenState extends State<CarDashboardScreen> with TickerProv
     final year = _yearCtl.text.trim();
     final fuel = _selectedFuel;
 
+    // Walidacja: wszystkie pola muszą być wypełnione
     if ([brand, insurance, model, service, year, fuel].contains(null) ||
         brand.isEmpty ||
         insurance.isEmpty ||
@@ -91,6 +103,7 @@ class _CarDashboardScreenState extends State<CarDashboardScreen> with TickerProv
       return;
     }
 
+    // Dane auta do bazy
     final data = {
       'Brand': brand,
       'InsuranceDate': insurance,
@@ -103,8 +116,10 @@ class _CarDashboardScreenState extends State<CarDashboardScreen> with TickerProv
 
     try {
       if (_isEditing) {
+        // Jeśli edytujesz auto, aktualizuj dokument
         await _firestore.collection('Cars').doc(_editingDocId).update(data);
       } else {
+        // Dodanie nowego auta – po sukcesie animacja konfetti
         await _firestore.collection('Cars').add(data);
         if (!mounted) return;
         Navigator.of(context).pop();
@@ -123,13 +138,16 @@ class _CarDashboardScreenState extends State<CarDashboardScreen> with TickerProv
     }
   }
 
+  // Usuwanie auta z bazy po id dokumentu
   Future<void> _deleteCar(String id) async {
     await _firestore.collection('Cars').doc(id).delete();
     setState(() {});
   }
 
+  // Wyświetlenie okna dialogowego do dodania/edycji auta
   void _showCarDialog({Map<String, dynamic>? car, String? docId}) {
     if (car != null) {
+      // Tryb edycji: uzupełnij pola
       _brandCtl.text = car['Brand'] ?? '';
       _insuranceCtl.text = car['InsuranceDate'] ?? '';
       _modelCtl.text = car['Model'] ?? '';
@@ -139,9 +157,11 @@ class _CarDashboardScreenState extends State<CarDashboardScreen> with TickerProv
       _isEditing = true;
       _editingDocId = docId;
     } else {
+      // Tryb dodawania: wyczyść pola
       _clear();
     }
 
+    // Okno dialogowe formularza auta
     showDialog(
       context: context,
       builder: (_) => AlertDialog(
@@ -192,6 +212,7 @@ class _CarDashboardScreenState extends State<CarDashboardScreen> with TickerProv
     );
   }
 
+  // Widget – pole tekstowe formularza (z ikoną)
   Widget _formTextField(TextEditingController ctl, String label, IconData icon) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
@@ -208,12 +229,14 @@ class _CarDashboardScreenState extends State<CarDashboardScreen> with TickerProv
     );
   }
 
+  // Wylogowanie użytkownika i powrót do ekranu logowania
   void _logout() async {
     await _auth.signOut();
     if (!mounted) return;
     Navigator.pushReplacementNamed(context, '/login');
   }
 
+  // Liczenie dni do wybranej daty (np. do serwisu/ubezpieczenia)
   int _daysLeft(String dateString) {
     try {
       final inputDate = DateTime.parse(dateString);
@@ -224,24 +247,26 @@ class _CarDashboardScreenState extends State<CarDashboardScreen> with TickerProv
     }
   }
 
+  // Widget ostrzeżenia (np. o wygasającym ubezpieczeniu)
   Widget _buildAlert(String msg, {bool isCritical = false}) {
     return Container(
+      width: double.infinity,
       margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
       decoration: BoxDecoration(
         color: isCritical ? Colors.red.shade100 : Colors.orange.shade100,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(13),
         border: Border.all(
           color: isCritical ? Colors.red.shade300 : Colors.orange.shade300,
           width: 1.2,
         ),
       ),
       child: Row(
-        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           Icon(isCritical ? Icons.warning_amber_rounded : Icons.notifications_active,
               color: isCritical ? Colors.red : Colors.orange, size: 22),
-          const SizedBox(width: 8),
+          const SizedBox(width: 7),
           Expanded(
             child: Text(
               msg,
@@ -257,113 +282,222 @@ class _CarDashboardScreenState extends State<CarDashboardScreen> with TickerProv
     );
   }
 
-  Widget _buildCarList() {
-    return Center(
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 900),
-        child: FutureBuilder<List<QueryDocumentSnapshot<Map<String, dynamic>>>>(
-          future: _fetchCars(),
-          builder: (context, snap) {
-            if (snap.connectionState == ConnectionState.waiting) {
-              return const Center(child: CircularProgressIndicator());
-            }
-            if (snap.hasError) {
-              return Center(child: Text('Błąd: ${snap.error}'));
-            }
-            final cars = snap.data ?? [];
-            if (cars.isEmpty) {
-              return const Center(child: Text('Brak samochodów'));
-            }
-
-            return ListView.builder(
-              padding: const EdgeInsets.all(24),
-              itemCount: cars.length,
-              itemBuilder: (_, i) {
-                final car = cars[i].data();
-                final insuranceLeft = _daysLeft(car['InsuranceDate'] ?? '');
-                final serviceLeft = _daysLeft(car['ServiceDate'] ?? '');
-
-                List<Widget> alerts = [];
-                if (insuranceLeft <= 14 && insuranceLeft >= 0) {
-                  alerts.add(_buildAlert(
-                    insuranceLeft == 0
-                        ? 'Uwaga! To ostatni dzień ważności ubezpieczenia!'
-                        : 'Uwaga! Tylko $insuranceLeft dni do końca ubezpieczenia!',
-                    isCritical: insuranceLeft <= 3,
-                  ));
-                } else if (insuranceLeft < 0 && insuranceLeft > -365) {
-                  alerts.add(_buildAlert(
-                    'Uwaga! Ubezpieczenie już wygasło!',
-                    isCritical: true,
-                  ));
-                }
-                if (serviceLeft <= 14 && serviceLeft >= 0) {
-                  alerts.add(_buildAlert(
-                    serviceLeft == 0
-                        ? 'Uwaga! To ostatni dzień na wykonanie serwisu!'
-                        : 'Uwaga! Tylko $serviceLeft dni do najbliższego serwisu!',
-                    isCritical: serviceLeft <= 3,
-                  ));
-                } else if (serviceLeft < 0 && serviceLeft > -365) {
-                  alerts.add(_buildAlert(
-                    'Uwaga! Termin serwisu już minął!',
-                    isCritical: true,
-                  ));
-                }
-
-                return Card(
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
-                  elevation: 7,
-                  margin: const EdgeInsets.symmetric(vertical: 18, horizontal: 8),
-                  color: Colors.white,
-                  child: Padding(
-                    padding: const EdgeInsets.only(bottom: 4.0, top: 4),
-                    child: ListTile(
-                      contentPadding: const EdgeInsets.symmetric(vertical: 18, horizontal: 22),
-                      leading: CircleAvatar(
-                        radius: 28,
-                        backgroundColor: Colors.indigo.shade100,
-                        child: Icon(Icons.directions_car, size: 32, color: Color(0xFF0B3D91)),
-                      ),
-                      title: Text(
-                        '${car['Brand']} ${car['Model']}',
-                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 19, color: Color(0xFF0B3D91)),
-                      ),
-                      subtitle: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          ...alerts,
-                          const SizedBox(height: 2),
-                          Text('Rok: ${car['Year']}'),
-                          Text('Ubezpieczenie: ${car['InsuranceDate']}'),
-                          Text('Serwis: ${car['ServiceDate']}'),
-                          Text('Paliwo: ${car['FuelType']}'),
+  // Widget wyświetlający ramkę z autem – ELEGANCKI, PROFESJONALNY
+  Widget _buildCarCard(Map<String, dynamic> car, String docId, List<Widget> alerts) {
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 18, horizontal: 14),
+      constraints: const BoxConstraints(maxWidth: 600),
+      child: Material(
+        elevation: 18,
+        borderRadius: BorderRadius.circular(32),
+        shadowColor: Colors.deepPurpleAccent.withOpacity(0.13),
+        child: Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(32),
+            gradient: LinearGradient(
+              colors: [Color(0xFFF7FAFF), Color(0xFFD3E0F7), Color(0xFFE2E7F7)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            border: Border.all(
+              color: Colors.deepPurple.withOpacity(0.14),
+              width: 2.8,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.deepPurple.withOpacity(0.09),
+                blurRadius: 32,
+                offset: const Offset(0, 12),
+              ),
+              BoxShadow(
+                color: Colors.blueGrey.withOpacity(0.07),
+                blurRadius: 8,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(22, 22, 22, 18),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Górny rząd: Ikona auta + nazwa + akcje
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Ikona samochodu z gradientem
+                    Container(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [Color(0xFF8EB1FF), Color(0xFFD3E2FF)],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                        shape: BoxShape.circle,
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.indigo.withOpacity(0.23),
+                            blurRadius: 12,
+                            offset: Offset(0, 4),
+                          ),
                         ],
                       ),
-                      trailing: Row(
-                        mainAxisSize: MainAxisSize.min,
+                      child: CircleAvatar(
+                        radius: 32,
+                        backgroundColor: Colors.transparent,
+                        child: Icon(Icons.directions_car, size: 37, color: Color(0xFF224EA9)),
+                      ),
+                    ),
+                    const SizedBox(width: 18),
+                    // Dane auta + ewentualne alerty
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          IconButton(
-                            icon: const Icon(Icons.edit, color: Colors.blueAccent),
-                            onPressed: () => _showCarDialog(car: car, docId: cars[i].id),
+                          Text(
+                            '${car['Brand']} ${car['Model']}',
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w800,
+                              fontSize: 23,
+                              color: Color(0xFF13306D),
+                              letterSpacing: 0.6,
+                            ),
                           ),
-                          IconButton(
-                            icon: const Icon(Icons.delete, color: Colors.redAccent),
-                            onPressed: () => _deleteCar(cars[i].id),
-                          ),
+                          const SizedBox(height: 3),
+                          ...alerts,
                         ],
                       ),
                     ),
-                  ),
-                );
-              },
-            );
-          },
+                    // Akcje: edytuj, usuń
+                    Column(
+                      children: [
+                        Tooltip(
+                          message: 'Edytuj',
+                          child: IconButton(
+                            icon: const Icon(Icons.edit, color: Color(0xFF3C6FE1)),
+                            onPressed: () => _showCarDialog(car: car, docId: docId),
+                          ),
+                        ),
+                        Tooltip(
+                          message: 'Usuń',
+                          child: IconButton(
+                            icon: const Icon(Icons.delete, color: Color(0xFFE14242)),
+                            onPressed: () => _deleteCar(docId),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+                const Divider(height: 22, color: Color(0xFFCBD8EF)),
+                // Dolny pasek – szczegóły auta
+                Wrap(
+                  spacing: 24,
+                  runSpacing: 10,
+                  children: [
+                    _buildCarDetailIcon(Icons.calendar_today, 'Rok', car['Year']),
+                    _buildCarDetailIcon(Icons.verified_user, 'Ubezp.', car['InsuranceDate']),
+                    _buildCarDetailIcon(Icons.build, 'Serwis', car['ServiceDate']),
+                    _buildCarDetailIcon(Icons.local_gas_station, 'Paliwo', car['FuelType']),
+                  ],
+                ),
+              ],
+            ),
+          ),
         ),
       ),
     );
   }
 
+  // Widget pojedynczego szczegółu auta z ikoną (np. rok, paliwo, itp.)
+  Widget _buildCarDetailIcon(IconData icon, String label, String? value) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 19, color: Colors.indigo.shade300),
+        const SizedBox(width: 5),
+        Text(
+          '$label: ',
+          style: const TextStyle(fontWeight: FontWeight.w600, color: Color(0xFF5466AA)),
+        ),
+        Text(
+          value ?? '-',
+          style: const TextStyle(fontWeight: FontWeight.w500, color: Color(0xFF33477A)),
+        ),
+      ],
+    );
+  }
+  //FutureBuilder
+  // Główna lista aut użytkownika (ładne ramki, alerty, wszystko z mapowania)
+  Widget _buildCarList() {
+    return FutureBuilder<List<QueryDocumentSnapshot<Map<String, dynamic>>>>(
+      future: _fetchCars(),
+      builder: (context, snap) {
+        if (snap.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        if (snap.hasError) {
+          return Center(child: Text('Błąd: ${snap.error}'));
+        }
+        final cars = snap.data ?? [];
+        if (cars.isEmpty) {
+          return const Center(child: Text('Brak samochodów'));
+        }
+
+        // Mapowanie po autach – każda ramka z alertami
+        return Center(
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                SizedBox(height: 32),
+                ...cars.map((doc) {
+                  final car = doc.data();
+                  final insuranceLeft = _daysLeft(car['InsuranceDate'] ?? '');
+                  final serviceLeft = _daysLeft(car['ServiceDate'] ?? '');
+
+                  // Tworzenie listy alertów (o kończących się terminach)
+                  List<Widget> alerts = [];
+                  if (insuranceLeft <= 14 && insuranceLeft >= 0) {
+                    alerts.add(_buildAlert(
+                      insuranceLeft == 0
+                          ? 'Uwaga! To ostatni dzień ważności ubezpieczenia!'
+                          : 'Uwaga! Tylko $insuranceLeft dni do końca ubezpieczenia!',
+                      isCritical: insuranceLeft <= 3,
+                    ));
+                  } else if (insuranceLeft < 0 && insuranceLeft > -365) {
+                    alerts.add(_buildAlert(
+                      'Uwaga! Ubezpieczenie już wygasło!',
+                      isCritical: true,
+                    ));
+                  }
+                  if (serviceLeft <= 14 && serviceLeft >= 0) {
+                    alerts.add(_buildAlert(
+                      serviceLeft == 0
+                          ? 'Uwaga! To ostatni dzień na wykonanie serwisu!'
+                          : 'Uwaga! Tylko $serviceLeft dni do najbliższego serwisu!',
+                      isCritical: serviceLeft <= 3,
+                    ));
+                  } else if (serviceLeft < 0 && serviceLeft > -365) {
+                    alerts.add(_buildAlert(
+                      'Uwaga! Termin serwisu już minął!',
+                      isCritical: true,
+                    ));
+                  }
+
+                  // Budowanie ramki dla jednego auta
+                  return _buildCarCard(car, doc.id, alerts);
+                }),
+                SizedBox(height: 32),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  // Drawer (menu boczne)
   Widget _buildDrawer(BuildContext ctx) {
     return Drawer(
       child: ListView(
@@ -419,6 +553,7 @@ class _CarDashboardScreenState extends State<CarDashboardScreen> with TickerProv
     );
   }
 
+  // NavigationRail – menu boczne 
   NavigationRail _buildRail(BuildContext ctx) => NavigationRail(
         selectedIndex: _selectedIndex,
         onDestinationSelected: (index) {
@@ -442,6 +577,7 @@ class _CarDashboardScreenState extends State<CarDashboardScreen> with TickerProv
         ],
       );
 
+  // ANIMACJA konfetti po dodaniu auta 
   void _showEpicAnimation() async {
     _screenController.reset();
     _confettiController.reset();
@@ -507,6 +643,7 @@ class _CarDashboardScreenState extends State<CarDashboardScreen> with TickerProv
     if (mounted) Navigator.of(context).pop();
   }
 
+  // Tworzenie kolorowych "konfetti" (animacja po dodaniu auta)
   List<Widget> _buildConfetti(double progress) {
     final List<Widget> confetti = [];
     final rnd = Random();
@@ -535,23 +672,38 @@ class _CarDashboardScreenState extends State<CarDashboardScreen> with TickerProv
     return confetti;
   }
 
+  // Główna budowa widoku ekranu
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      extendBodyBehindAppBar: true,
+      extendBodyBehindAppBar: true, // Gradient również za AppBar
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        title: const Text('Twoje auta', style: TextStyle(color: Color(0xFF0B3D91), fontWeight: FontWeight.bold)),
+        title: Padding(
+          padding: const EdgeInsets.only(left: 0, top: 18, bottom: 12),
+          child: Center(
+            child: Text(
+              'Twoje auta',
+              style: const TextStyle(
+                color: Color(0xFF0B3D91),
+                fontWeight: FontWeight.bold,
+                fontSize: 28,
+                letterSpacing: 0.3,
+              ),
+            ),
+          ),
+        ),
         actions: [
           IconButton(icon: const Icon(Icons.logout), color: Color(0xFF0B3D91), onPressed: _logout),
           IconButton(icon: const Icon(Icons.add), color: Color(0xFF0B3D91), onPressed: () => _showCarDialog()),
         ],
+        toolbarHeight: 74,
       ),
       drawer: _buildDrawer(context),
       body: Stack(
         children: [
-          // Motoryzacyjny gradient
+          // Gradientowe tło dla motoryzacyjnego klimatu
           Container(
             decoration: const BoxDecoration(
               gradient: LinearGradient(
@@ -569,7 +721,15 @@ class _CarDashboardScreenState extends State<CarDashboardScreen> with TickerProv
           Row(
             children: [
               if (MediaQuery.of(context).size.width >= 600) _buildRail(context),
-              Expanded(child: _buildCarList()),
+              Expanded(
+                child: Container(
+                  alignment: Alignment.center,
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 900),
+                    child: _buildCarList(),
+                  ),
+                ),
+              ),
             ],
           ),
         ],

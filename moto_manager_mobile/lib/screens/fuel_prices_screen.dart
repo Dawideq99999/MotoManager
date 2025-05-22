@@ -7,8 +7,9 @@ import 'package:fl_chart/fl_chart.dart';
 
 import 'car_catalog_screen.dart';
 import 'car_dashboard_screen.dart';
-import 'car_service_screen.dart'; // <- DODAJ TEN IMPORT
+import 'car_service_screen.dart'; // import do ekranu serwisów
 
+// EKRAN TANKOWAŃ I CEN PALIW
 class FuelPricesScreen extends StatefulWidget {
   const FuelPricesScreen({Key? key}) : super(key: key);
 
@@ -17,27 +18,30 @@ class FuelPricesScreen extends StatefulWidget {
 }
 
 class _FuelPricesScreenState extends State<FuelPricesScreen> {
-  final _firestore = FirebaseFirestore.instance;
-  final _auth = FirebaseAuth.instance;
+  final _firestore = FirebaseFirestore.instance; // Połączenie z Firestore
+  final _auth = FirebaseAuth.instance;           // Autoryzacja użytkownika
 
-  int _selectedIndex = 1;
+  int _selectedIndex = 1; // Do nawigacji Drawer/Rail
 
+  // --- STAN FORMULARZA TANKOWANIA ---
   String? _selectedCarId;
   String? _selectedFuelType;
-  final _litersCtl = TextEditingController();
-  final _priceCtl  = TextEditingController();
-  final _totalCtl  = TextEditingController();
-  DateTime _selectedDate = DateTime.now();
-  bool _manualTotal = false;
+  final _litersCtl = TextEditingController(); // Kontroler litry
+  final _priceCtl  = TextEditingController(); // Kontroler cena za litr
+  final _totalCtl  = TextEditingController(); // Kontroler łączna kwota
+  DateTime _selectedDate = DateTime.now();    // Data tankowania
+  bool _manualTotal = true; // DOMYŚLNIE wpisujemy tylko łączną kwotę!
 
-  List<QueryDocumentSnapshot<Map<String, dynamic>>>? _carsCache;
+  List<QueryDocumentSnapshot<Map<String, dynamic>>>? _carsCache; // Cache aut (żeby nie pobierać za każdym razem)
 
+  // Pobieranie samochodów użytkownika z bazy
   Future<List<QueryDocumentSnapshot<Map<String, dynamic>>>> _getCars() async {
     final uid = _auth.currentUser!.uid;
     final snap = await _firestore.collection('Cars').where('uid', isEqualTo: uid).get();
     return snap.docs;
   }
 
+  // Czyszczenie kontrolerów po zamknięciu ekranu
   @override
   void dispose() {
     _litersCtl.dispose();
@@ -46,6 +50,7 @@ class _FuelPricesScreenState extends State<FuelPricesScreen> {
     super.dispose();
   }
 
+  // Picker do wyboru daty tankowania (wywołuje kalendarz)
   Future<void> _pickDate() async {
     final picked = await showDatePicker(
       context: context,
@@ -68,12 +73,14 @@ class _FuelPricesScreenState extends State<FuelPricesScreen> {
     if (picked != null) setState(() => _selectedDate = picked);
   }
 
+  // Zapisanie tankowania do Firestore (obsługuje oba tryby)
   Future<void> _saveFill() async {
     double? liters;
     double? pricePerL;
     double? totalCost;
 
     if (_manualTotal) {
+      // Jeśli wpisujemy tylko łączną kwotę (tryb uproszczony)
       totalCost = double.tryParse(_totalCtl.text.replaceAll(',', '.'));
       if (totalCost == null) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Podaj kwotę.')));
@@ -82,6 +89,7 @@ class _FuelPricesScreenState extends State<FuelPricesScreen> {
       liters = 0;
       pricePerL = 0;
     } else {
+      // Jeśli podajemy litry i cenę za litr (tryb klasyczny)
       liters = double.tryParse(_litersCtl.text.replaceAll(',', '.'));
       pricePerL = double.tryParse(_priceCtl.text.replaceAll(',', '.'));
       if (liters == null || pricePerL == null) {
@@ -96,6 +104,7 @@ class _FuelPricesScreenState extends State<FuelPricesScreen> {
       return;
     }
 
+    // Dodanie rekordu do kolekcji "Fule" (tankowania)
     await _firestore.collection('Fule').add({
       'uid': _auth.currentUser!.uid,
       'carId': _selectedCarId,
@@ -106,11 +115,14 @@ class _FuelPricesScreenState extends State<FuelPricesScreen> {
       'totalCost': totalCost,
     });
 
+    // Czyścimy pola formularza
     _litersCtl.clear();
     _priceCtl.clear();
     _totalCtl.clear();
-    setState(() {});
+    setState(() {}); // Odśwież widok
   }
+
+  // --- UI ---
 
   @override
   Widget build(BuildContext context) {
@@ -125,6 +137,7 @@ class _FuelPricesScreenState extends State<FuelPricesScreen> {
       ),
       body: Stack(
         children: [
+          // Gradientowe tło
           Container(
             decoration: const BoxDecoration(
               gradient: LinearGradient(
@@ -141,7 +154,7 @@ class _FuelPricesScreenState extends State<FuelPricesScreen> {
           ),
           Row(
             children: [
-              if (MediaQuery.of(context).size.width >= 650) _buildRail(context),
+              if (MediaQuery.of(context).size.width >= 650) _buildRail(context), // Rail na szerokich ekranach
               Expanded(
                 child: Center(
                   child: ConstrainedBox(
@@ -158,11 +171,12 @@ class _FuelPricesScreenState extends State<FuelPricesScreen> {
                           return const Center(child: Text('Najpierw dodaj auto 😉'));
                         }
                         if (_selectedCarId == null) {
+                          // Domyślnie wybieramy pierwsze auto i jego typ paliwa
                           _selectedCarId = cars.first.id;
                           _selectedFuelType = cars.first.data()['FuelType'];
                         }
                         _carsCache = cars;
-                        return _buildMainContent(cars);
+                        return _buildMainContent(cars); // Główna zawartość ekranu
                       },
                     ),
                   ),
@@ -175,6 +189,7 @@ class _FuelPricesScreenState extends State<FuelPricesScreen> {
     );
   }
 
+  // Drawer boczny (menu nawigacji)
   Widget _buildDrawer(BuildContext ctx) {
     return Drawer(
       child: ListView(
@@ -230,6 +245,7 @@ class _FuelPricesScreenState extends State<FuelPricesScreen> {
     );
   }
 
+  // Nawigacja boczna (Rail)
   Widget _buildRail(BuildContext ctx) {
     return NavigationRail(
       selectedIndex: _selectedIndex,
@@ -255,12 +271,14 @@ class _FuelPricesScreenState extends State<FuelPricesScreen> {
     );
   }
 
+  // Główna zawartość ekranu: wybór auta, formularz, historia, wykres
   Widget _buildMainContent(List<QueryDocumentSnapshot<Map<String, dynamic>>> cars) {
     return SingleChildScrollView(
       padding: const EdgeInsets.only(top: 24, bottom: 40, left: 14, right: 14),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Sekcja wyboru auta i rodzaju paliwa
           Card(
             margin: const EdgeInsets.only(bottom: 24),
             elevation: 6,
@@ -313,6 +331,7 @@ class _FuelPricesScreenState extends State<FuelPricesScreen> {
               ),
             ),
           ),
+          // Przycisk do strony z cenami paliw
           Center(
             child: ElevatedButton.icon(
               onPressed: () => launchUrl(
@@ -331,6 +350,7 @@ class _FuelPricesScreenState extends State<FuelPricesScreen> {
             ),
           ),
           const SizedBox(height: 20),
+          // Formularz dodawania tankowania
           Card(
             elevation: 5,
             color: Colors.white,
@@ -340,6 +360,7 @@ class _FuelPricesScreenState extends State<FuelPricesScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  // Przełącznik trybu formularza (tylko łączna kwota <-> klasyczny)
                   SwitchListTile(
                     contentPadding: EdgeInsets.zero,
                     title: const Text('Wpisuję tylko łączną kwotę', style: TextStyle(fontSize: 15)),
@@ -354,6 +375,7 @@ class _FuelPricesScreenState extends State<FuelPricesScreen> {
                     },
                   ),
                   if (!_manualTotal) ...[
+                    // Klasyczny tryb — wpisujesz litry i cenę za litr
                     TextField(
                       controller: _litersCtl,
                       keyboardType: const TextInputType.numberWithOptions(decimal: true),
@@ -378,6 +400,7 @@ class _FuelPricesScreenState extends State<FuelPricesScreen> {
                       ),
                     ),
                   ] else ...[
+                    // Tryb wpisywania tylko kwoty (domyślny)
                     TextField(
                       controller: _totalCtl,
                       keyboardType: const TextInputType.numberWithOptions(decimal: true),
@@ -391,6 +414,7 @@ class _FuelPricesScreenState extends State<FuelPricesScreen> {
                     ),
                   ],
                   const SizedBox(height: 12),
+                  // Wiersz z datą i przyciskami
                   Row(
                     children: [
                       Icon(Icons.calendar_today, size: 19, color: Colors.deepPurple.shade600),
@@ -427,18 +451,20 @@ class _FuelPricesScreenState extends State<FuelPricesScreen> {
             ),
           ),
           const SizedBox(height: 20),
+          // Sekcja historii tankowań
           const Padding(
             padding: EdgeInsets.only(left: 6, bottom: 7, top: 10),
             child: Text('Historia tankowań:', style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: Color(0xFF0B3D91))),
           ),
           _buildFillsList(),
           const SizedBox(height: 24),
-          _buildChart(),
+          _buildChart(), // Wykres miesięczny wydatków na paliwo
         ],
       ),
     );
   }
 
+  // Lista tankowań dla wybranego auta (pobiera dane na bieżąco z Firestore)
   Widget _buildFillsList() {
     if (_selectedCarId == null) return const SizedBox();
 
@@ -480,6 +506,7 @@ class _FuelPricesScreenState extends State<FuelPricesScreen> {
     );
   }
 
+  // Wykres miesięcznych wydatków na paliwo (dla wybranego auta)
   Widget _buildChart() {
     if (_selectedCarId == null) return const SizedBox();
 

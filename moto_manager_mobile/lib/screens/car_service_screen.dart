@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
 import 'package:fl_chart/fl_chart.dart';
 
+// GŁÓWNY EKRAN SERWISÓW I NAPRAW
 class CarServiceScreen extends StatefulWidget {
   const CarServiceScreen({Key? key}) : super(key: key);
 
@@ -12,19 +13,27 @@ class CarServiceScreen extends StatefulWidget {
 }
 
 class _CarServiceScreenState extends State<CarServiceScreen> {
+  // Inicjalizacja instancji Firebase
   final _firestore = FirebaseFirestore.instance;
   final _auth = FirebaseAuth.instance;
 
+  // Kontroler do pola kwoty serwisu
   final _costCtl = TextEditingController();
-  final _descCtl = TextEditingController();
+
+  // Stan wybranej daty, typu, samochodu i indeksu menu
   DateTime _selectedDate = DateTime.now();
   String _selectedType = 'Wymiana rozrządu';
-  String? _selectedCarId; // wybrane auto (albo null = wszystkie)
-  int _selectedIndex = 3; // rail/drawer
+  String? _selectedCarId;
+  int _selectedIndex = 3;
 
-  List<Map<String, dynamic>> _cars = []; // lista aut użytkownika
-  Map<String, String> _carNames = {}; // carId -> 'Marka Model (Rok)'
+  // Czy sekcja historii jest rozwinięta
+  bool _historyExpanded = true;
 
+  // Listy aut i mapowanie ID -> nazwa
+  List<Map<String, dynamic>> _cars = [];
+  Map<String, String> _carNames = {};
+
+  // Lista typów serwisowych (do dropdowna)
   final List<String> _serviceTypes = [
     'Wymiana rozrządu',
     'Wymiana oleju silnikowego',
@@ -38,12 +47,14 @@ class _CarServiceScreenState extends State<CarServiceScreen> {
     'Inne',
   ];
 
+  // Ładowanie aut użytkownika po uruchomieniu ekranu
   @override
   void initState() {
     super.initState();
     _fetchCars();
   }
 
+  // Pobieranie aut aktualnego usera z Firestore
   Future<void> _fetchCars() async {
     final uid = _auth.currentUser!.uid;
     final snap = await _firestore.collection('Cars').where('uid', isEqualTo: uid).get();
@@ -56,6 +67,7 @@ class _CarServiceScreenState extends State<CarServiceScreen> {
     });
   }
 
+  // Picker do wyboru daty serwisu (kalendarz)
   Future<void> _pickDate() async {
     final picked = await showDatePicker(
       context: context,
@@ -66,35 +78,36 @@ class _CarServiceScreenState extends State<CarServiceScreen> {
     if (picked != null) setState(() => _selectedDate = picked);
   }
 
+  // Zapis nowego wpisu serwisowego do bazy Firestore
   Future<void> _saveService() async {
     final cost = double.tryParse(_costCtl.text.replaceAll(',', '.'));
     if (cost == null) {
+      // Walidacja - sprawdź kwotę
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Podaj prawidłową kwotę')));
       return;
     }
     if (_selectedCarId == null) {
+      // Walidacja - wybierz samochód
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Wybierz samochód!')));
       return;
     }
+    // Dodaj wpis do kolekcji CarService w Firestore
     await _firestore.collection('CarService').add({
       'uid': _auth.currentUser!.uid,
       'type': _selectedType,
       'cost': cost,
       'date': Timestamp.fromDate(_selectedDate),
-      'description': _descCtl.text,
       'carId': _selectedCarId,
     });
     _costCtl.clear();
-    _descCtl.clear();
-    setState(() {});
+    setState(() {}); // Odśwież widok
   }
 
-  // ---- UI ----
-
+  // GŁÓWNY WIDOK EKRANU
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      drawer: _buildDrawer(context),
+      drawer: _buildDrawer(context), // Menu boczne
       appBar: AppBar(
         backgroundColor: Colors.white.withOpacity(0.92),
         elevation: 1,
@@ -111,33 +124,29 @@ class _CarServiceScreenState extends State<CarServiceScreen> {
         ),
         child: Row(
           children: [
-            if (MediaQuery.of(context).size.width >= 650) _buildRail(context),
+            if (MediaQuery.of(context).size.width >= 650) _buildRail(context), // Nawigacja boczna tylko na desktopie
             Expanded(
               child: ListView(
                 padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 0),
                 children: [
-                  _buildCarDropdown(),
-                  _buildFormCard(),
+                  _buildCarDropdown(),   // Dropdown wyboru auta
+                  _buildFormCard(),      // Formularz dodawania wpisu serwisowego
                   const SizedBox(height: 22),
-                  _buildSummary(),
+                  _buildSummary(),       // Szybkie podsumowanie wydatków
                   const SizedBox(height: 16),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                    child: Text('Historia serwisów:', style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: Color(0xFF0B3D91))),
-                  ),
-                  _buildServiceList(),
-                  const SizedBox(height: 32),
+                  _buildServiceHistory(),// Historia serwisów z rozwijaniem
+                  const SizedBox(height: 22),
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 5),
                     child: Text('Wydatki miesięczne:', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                   ),
-                  SizedBox(height: 260, child: _buildMonthlyChart()),
+                  SizedBox(height: 260, child: _buildMonthlyChart()), // Wykres słupkowy
                   const SizedBox(height: 18),
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 5),
                     child: Text('Najdroższe typy usług:', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                   ),
-                  SizedBox(height: 260, child: _buildTypeChart()),
+                  SizedBox(height: 260, child: _buildTypeChart()),    // Wykres kołowy + legenda
                   const SizedBox(height: 28),
                 ],
               ),
@@ -148,6 +157,7 @@ class _CarServiceScreenState extends State<CarServiceScreen> {
     );
   }
 
+  // Dropdown do wyboru auta (lub wszystkich aut)
   Widget _buildCarDropdown() {
     return Padding(
       padding: const EdgeInsets.only(top: 5, left: 19, right: 19, bottom: 10),
@@ -175,6 +185,7 @@ class _CarServiceScreenState extends State<CarServiceScreen> {
     );
   }
 
+  // Formularz dodawania nowego wpisu serwisowego
   Widget _buildFormCard() {
     return Center(
       child: Container(
@@ -189,6 +200,7 @@ class _CarServiceScreenState extends State<CarServiceScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                // Dropdown z typami czynności serwisowych
                 DropdownButtonFormField<String>(
                   value: _selectedType,
                   decoration: const InputDecoration(
@@ -204,6 +216,7 @@ class _CarServiceScreenState extends State<CarServiceScreen> {
                   },
                 ),
                 const SizedBox(height: 12),
+                // Pole do wpisania kosztu
                 TextField(
                   controller: _costCtl,
                   keyboardType: const TextInputType.numberWithOptions(decimal: true),
@@ -214,15 +227,7 @@ class _CarServiceScreenState extends State<CarServiceScreen> {
                   ),
                 ),
                 const SizedBox(height: 12),
-                TextField(
-                  controller: _descCtl,
-                  decoration: const InputDecoration(
-                    labelText: 'Opis (opcjonalnie)',
-                    border: OutlineInputBorder(),
-                    prefixIcon: Icon(Icons.notes),
-                  ),
-                ),
-                const SizedBox(height: 12),
+                // Wiersz z datą, przyciskiem do wyboru daty i przyciskiem Dodaj
                 Row(
                   children: [
                     Icon(Icons.calendar_today, size: 19, color: Colors.deepPurple),
@@ -258,6 +263,7 @@ class _CarServiceScreenState extends State<CarServiceScreen> {
     );
   }
 
+  // Zapytanie do serwisów (filtrowane po użytkowniku i ewentualnie aucie)
   Query<Map<String, dynamic>> _baseQuery() {
     var q = _firestore
         .collection('CarService')
@@ -268,6 +274,37 @@ class _CarServiceScreenState extends State<CarServiceScreen> {
     return q;
   }
 
+  // Sekcja HISTORIA SERWISÓW z możliwością rozwinięcia/zwiniecia
+  Widget _buildServiceHistory() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+      child: Card(
+        color: Colors.white.withOpacity(0.97),
+        elevation: 2,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(13)),
+        child: ExpansionTile(
+          initiallyExpanded: _historyExpanded,
+          title: Text(
+            'Historia serwisów',
+            style: const TextStyle(
+                fontSize: 17, fontWeight: FontWeight.bold, color: Color(0xFF0B3D91)),
+          ),
+          trailing: Icon(
+            _historyExpanded ? Icons.expand_less : Icons.expand_more,
+            color: const Color(0xFF0B3D91),
+          ),
+          children: [
+            _buildServiceList(), // Lista wpisów serwisowych
+          ],
+          onExpansionChanged: (expanded) {
+            setState(() => _historyExpanded = expanded);
+          },
+        ),
+      ),
+    );
+  }
+
+  // Lista wpisów serwisowych (każdy wpis w osobnej karcie)
   Widget _buildServiceList() {
     return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
       stream: _baseQuery().orderBy('date', descending: true).snapshots(),
@@ -290,7 +327,7 @@ class _CarServiceScreenState extends State<CarServiceScreen> {
               child: ListTile(
                 leading: const Icon(Icons.build, color: Colors.deepPurple),
                 title: Text('${f['type']} — ${f['cost']} zł', style: const TextStyle(fontWeight: FontWeight.w600)),
-                subtitle: Text('${DateFormat('yyyy-MM-dd').format(dt)}\n${f['description'] ?? ''}\n$carName'),
+                subtitle: Text('${DateFormat('yyyy-MM-dd').format(dt)}\n$carName'),
               ),
             );
           }).toList(),
@@ -299,6 +336,7 @@ class _CarServiceScreenState extends State<CarServiceScreen> {
     );
   }
 
+  // Szybkie podsumowanie wydatków (suma i wydatki z tego miesiąca)
   Widget _buildSummary() {
     return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
       stream: _baseQuery().snapshots(),
@@ -367,6 +405,7 @@ class _CarServiceScreenState extends State<CarServiceScreen> {
     );
   }
 
+  // Wykres słupkowy - wydatki miesięczne
   Widget _buildMonthlyChart() {
     return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
       stream: _baseQuery().snapshots(),
@@ -459,6 +498,7 @@ class _CarServiceScreenState extends State<CarServiceScreen> {
     );
   }
 
+  // Wykres kołowy - najdroższe typy usług + legenda (obok na szeroko)
   Widget _buildTypeChart() {
     return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
       stream: _baseQuery().snapshots(),
@@ -481,43 +521,164 @@ class _CarServiceScreenState extends State<CarServiceScreen> {
             ? sorted.skip(5).map((e) => e.value).fold(0.0, (a, b) => a + b)
             : 0.0;
 
+        // Lista kolorów do wykresu i legendy
+        final List<Color> sectionColors = [
+          ...List.generate(top.length, (i) => Colors.primaries[i * 3 % Colors.primaries.length].shade400),
+          if (restSum > 0) Colors.grey.shade400,
+        ];
+
+        // PieChart (tylko kolory, bez tekstów w środku)
         final pieSections = [
           for (int i = 0; i < top.length; i++)
             PieChartSectionData(
-              color: Colors.primaries[i * 3 % Colors.primaries.length].shade300,
+              color: sectionColors[i],
               value: top[i].value,
-              title: '${top[i].key}\n${top[i].value.toStringAsFixed(0)} zł',
+              title: '',
               radius: 60,
-              titleStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.black87),
-              titlePositionPercentageOffset: 0.62,
             ),
           if (restSum > 0)
             PieChartSectionData(
-              color: Colors.grey.shade400,
+              color: sectionColors.last,
               value: restSum,
-              title: 'Inne\n${restSum.toStringAsFixed(0)} zł',
-              radius: 48,
-              titleStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: Colors.black54),
-              titlePositionPercentageOffset: 0.62,
+              title: '',
+              radius: 54,
             ),
         ];
 
-        return Padding(
-          padding: const EdgeInsets.only(left: 8, right: 8, top: 12, bottom: 8),
-          child: PieChart(
-            PieChartData(
-              sections: pieSections,
-              sectionsSpace: 2,
-              centerSpaceRadius: 32,
+        // Legenda: kolor + nazwa typu + suma w zł
+        List<Widget> legendItems = [];
+        for (int i = 0; i < top.length; i++) {
+          legendItems.add(Padding(
+            padding: const EdgeInsets.symmetric(vertical: 4),
+            child: Row(
+              children: [
+                Container(
+                  width: 20,
+                  height: 20,
+                  decoration: BoxDecoration(
+                    color: sectionColors[i],
+                    borderRadius: BorderRadius.circular(5),
+                    border: Border.all(color: Colors.black12),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    top[i].key,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 16,
+                      color: Color(0xFF22224C),
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                    maxLines: 2,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  '${top[i].value.toStringAsFixed(0)} zł',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                    color: Color(0xFF273591),
+                  ),
+                ),
+              ],
             ),
-          ),
+          ));
+        }
+        if (restSum > 0) {
+          legendItems.add(Padding(
+            padding: const EdgeInsets.symmetric(vertical: 4),
+            child: Row(
+              children: [
+                Container(
+                  width: 20,
+                  height: 20,
+                  decoration: BoxDecoration(
+                    color: sectionColors.last,
+                    borderRadius: BorderRadius.circular(5),
+                    border: Border.all(color: Colors.black12),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                const Expanded(
+                  child: Text(
+                    'Inne',
+                    style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16, color: Color(0xFF6B6B7B)),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  '${restSum.toStringAsFixed(0)} zł',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                    color: Color(0xFF727292),
+                  ),
+                ),
+              ],
+            ),
+          ));
+        }
+
+        // Responsywność: legenda obok na szeroko, pod spodem na wąsko
+        final isWide = MediaQuery.of(context).size.width > 580;
+
+        return Padding(
+          padding: const EdgeInsets.only(left: 28, right: 12, top: 12, bottom: 8),
+          child: isWide
+              ? Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // PieChart (wykres kołowy)
+                    SizedBox(
+                      width: 160,
+                      height: 170,
+                      child: PieChart(
+                        PieChartData(
+                          sections: pieSections,
+                          sectionsSpace: 2,
+                          centerSpaceRadius: 42,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 32),
+                    // Legenda
+                    Expanded(
+                      child: Padding(
+                        padding: const EdgeInsets.only(top: 12),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: legendItems,
+                        ),
+                      ),
+                    ),
+                  ],
+                )
+              : Column(
+                  children: [
+                    SizedBox(
+                      width: 170,
+                      height: 170,
+                      child: PieChart(
+                        PieChartData(
+                          sections: pieSections,
+                          sectionsSpace: 2,
+                          centerSpaceRadius: 40,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    ...legendItems,
+                  ],
+                ),
         );
       },
     );
   }
 
-  // ---- Drawer/Rail
-
+  // Drawer boczny (menu z lewej)
   Widget _buildDrawer(BuildContext ctx) {
     return Drawer(
       child: ListView(
@@ -572,6 +733,7 @@ class _CarServiceScreenState extends State<CarServiceScreen> {
     );
   }
 
+  // Nawigacja boczna (Rail) - desktop/tablet
   Widget _buildRail(BuildContext ctx) {
     return NavigationRail(
       selectedIndex: _selectedIndex,

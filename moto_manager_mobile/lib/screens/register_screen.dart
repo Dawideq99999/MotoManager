@@ -1,18 +1,22 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
+// Ekran rejestracji nowego użytkownika
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
   @override
   State<RegisterScreen> createState() => _RegisterScreenState();
 }
 
+// Stan dla ekranu rejestracji
 class _RegisterScreenState extends State<RegisterScreen> {
+  // Kontrolery do obsługi pól tekstowych (email, hasło, powtórz hasło)
   final _emailCtl = TextEditingController();
   final _passCtl = TextEditingController();
   final _confirmCtl = TextEditingController();
-  bool _isLoading = false;
+  bool _isLoading = false; // Flaga, czy trwa rejestracja (dla loadera)
 
+  // Sprzątamy kontrolery przy zamykaniu ekranu
   @override
   void dispose() {
     _emailCtl.dispose();
@@ -21,17 +25,20 @@ class _RegisterScreenState extends State<RegisterScreen> {
     super.dispose();
   }
 
+  // Funkcja rejestrująca użytkownika w Firebase
   Future<void> _register() async {
     final email = _emailCtl.text.trim();
     final pass = _passCtl.text;
     final confirm = _confirmCtl.text;
 
+    // Walidacja pól — czy wszystkie wypełnione?
     if (email.isEmpty || pass.isEmpty || confirm.isEmpty) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Wypełnij wszystkie pola.')));
       return;
     }
+    // Czy hasła są identyczne?
     if (pass != confirm) {
       if (!mounted) return;
       ScaffoldMessenger.of(context)
@@ -41,13 +48,14 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
     setState(() => _isLoading = true);
     try {
+      // Rejestrujemy przez Firebase
       await FirebaseAuth.instance.createUserWithEmailAndPassword(
         email: email, password: pass,
       );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Zarejestrowano pomyślnie!')));
-      Navigator.pop(context);
+      Navigator.pop(context); // Wróć na ekran logowania
     } on FirebaseAuthException catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context)
@@ -57,12 +65,13 @@ class _RegisterScreenState extends State<RegisterScreen> {
     }
   }
 
+  // Budowanie widoku ekranu
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       body: Stack(
         children: [
-          // gradient background
+          // Gradientowe tło
           Container(
             decoration: const BoxDecoration(
               gradient: LinearGradient(
@@ -91,31 +100,35 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    // Możesz tu wrzucić logo MotoManager
+                    // Logo lub ikona aplikacji
                     const Icon(Icons.car_repair, color: Color(0xFF0B3D91), size: 56),
                     const SizedBox(height: 10),
                     const Text('Rejestracja',
                         style: TextStyle(
                             fontSize: 30, fontWeight: FontWeight.bold, color: Color(0xFF0B3D91))),
                     const SizedBox(height: 22),
+                    // Pole email
                     TextField(
                       controller: _emailCtl,
                       decoration: _inputDecoration('Email', Icons.email),
                       keyboardType: TextInputType.emailAddress,
                     ),
                     const SizedBox(height: 16),
+                    // Pole hasło
                     TextField(
                       controller: _passCtl,
                       decoration: _inputDecoration('Hasło', Icons.lock),
                       obscureText: true,
                     ),
                     const SizedBox(height: 16),
+                    // Pole powtórz hasło
                     TextField(
                       controller: _confirmCtl,
                       decoration: _inputDecoration('Powtórz hasło', Icons.lock_outline),
                       obscureText: true,
                     ),
                     const SizedBox(height: 24),
+                    // Przycisk rejestracji
                     SizedBox(
                       width: double.infinity,
                       child: ElevatedButton.icon(
@@ -134,6 +147,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       ),
                     ),
                     const SizedBox(height: 10),
+                    // Link powrotu do logowania
                     TextButton(
                       onPressed: _isLoading ? null : () => Navigator.pop(context),
                       child: const Text('Masz już konto? Zaloguj się'),
@@ -148,6 +162,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
     );
   }
 
+  // Dekoracja pól formularza (etykieta, ikona, itp.)
   InputDecoration _inputDecoration(String label, IconData icon) => InputDecoration(
         labelText: label,
         prefixIcon: Icon(icon),

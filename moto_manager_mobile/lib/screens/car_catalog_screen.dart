@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
+// Klucz do API ninjas (do pobierania danych o samochodach)
 const apiKey = 'gtQlZ/YXtb1hDOxFvn594g==ty1WUiXdcDd3jX1M';
 
 class CarCatalogScreen extends StatefulWidget {
@@ -12,18 +13,24 @@ class CarCatalogScreen extends StatefulWidget {
 }
 
 class _CarCatalogScreenState extends State<CarCatalogScreen> {
+  // Kontrolery do pól wyszukiwania
   final TextEditingController brandCtl = TextEditingController();
   final TextEditingController modelCtl = TextEditingController();
   final TextEditingController yearCtl = TextEditingController();
 
+  // Lista pobranych samochodów
   List<Map<String, dynamic>> cars = [];
+  // Czy trwa pobieranie?
   bool loading = false;
+  // Komunikat o błędzie (jeśli coś nie działa)
   String? error;
+  // Wybrany indeks w drawerze/railu
   int _selectedIndex = 2;
 
-  // Dla daty rocznika
+  // Wybrany rocznik (jako data) - do pickerka
   DateTime? _pickedYear;
 
+  // Polskie opisy do kluczy samochodu
   final Map<String, String> carLabels = const {
     'make': 'Marka',
     'model': 'Model',
@@ -49,6 +56,7 @@ class _CarCatalogScreenState extends State<CarCatalogScreen> {
     'zero_to_sixty_mph': '0-100 km/h (s)',
   };
 
+  // Czyści wszystkie pola wyszukiwarki i wyniki
   void clearForm() {
     setState(() {
       brandCtl.clear();
@@ -59,7 +67,8 @@ class _CarCatalogScreenState extends State<CarCatalogScreen> {
       error = null;
     });
   }
-
+  //setState
+  // Pobiera dane o autach z API na podstawie tego co wpisał użytkownik
   Future<void> fetchCars() async {
     setState(() {
       loading = true;
@@ -71,6 +80,7 @@ class _CarCatalogScreenState extends State<CarCatalogScreen> {
     final model = modelCtl.text.trim();
     final year = yearCtl.text.trim();
 
+    //  adres URL do zapytania
     var url = Uri.https('api.api-ninjas.com', '/v1/cars', {
       if (brand.isNotEmpty) 'make': brand,
       if (model.isNotEmpty) 'model': model,
@@ -78,20 +88,24 @@ class _CarCatalogScreenState extends State<CarCatalogScreen> {
     });
 
     try {
+      // Robimy zapytanie GET do API (z kluczem w nagłówkach)
       final res = await http.get(url, headers: {'X-Api-Key': apiKey});
       if (res.statusCode == 200) {
+        // Sukces, parsujemy JSON i pokazujemy wyniki
         final decoded = json.decode(res.body);
         setState(() {
           cars = List<Map<String, dynamic>>.from(decoded);
           loading = false;
         });
       } else {
+        // Jakiś błąd odpowiedzi API
         setState(() {
           loading = false;
           error = 'Błąd API (kod ${res.statusCode})';
         });
       }
     } catch (e) {
+      // Złapany błąd sieciowy lub inny problem
       setState(() {
         loading = false;
         error = 'Błąd sieci lub API: $e';
@@ -99,6 +113,7 @@ class _CarCatalogScreenState extends State<CarCatalogScreen> {
     }
   }
 
+  // Generuje listę szczegółów auta jako widgety (wyklucza puste/N/A itp.)
   List<Widget> _carDetails(Map<String, dynamic> car) {
     final List<Widget> details = [];
     car.forEach((key, value) {
@@ -125,7 +140,7 @@ class _CarCatalogScreenState extends State<CarCatalogScreen> {
     return details;
   }
 
-  // Motoryzacyjny, nowoczesny panel wyszukiwarki
+  // Wygląd panelu wyszukiwania (pola + przyciski)
   Widget _searchPanel(BuildContext context) {
     return Center(
       child: Container(
@@ -180,7 +195,7 @@ class _CarCatalogScreenState extends State<CarCatalogScreen> {
                   ),
                 ),
                 const SizedBox(width: 16),
-                // Data picker na rocznik
+                // Pole wyboru rocznika przez date picker
                 SizedBox(
                   width: 130,
                   child: TextField(
@@ -218,6 +233,7 @@ class _CarCatalogScreenState extends State<CarCatalogScreen> {
             const SizedBox(height: 18),
             Row(
               children: [
+                // Przycisk do szukania
                 ElevatedButton.icon(
                   onPressed: loading ? null : fetchCars,
                   icon: const Icon(Icons.search),
@@ -231,6 +247,7 @@ class _CarCatalogScreenState extends State<CarCatalogScreen> {
                   ),
                 ),
                 const SizedBox(width: 12),
+                // Przycisk do czyszczenia
                 OutlinedButton.icon(
                   onPressed: clearForm,
                   icon: const Icon(Icons.clear),
@@ -288,12 +305,15 @@ class _CarCatalogScreenState extends State<CarCatalogScreen> {
               child: ListView(
                 padding: const EdgeInsets.symmetric(horizontal: 0, vertical: 10),
                 children: [
+                  // Panel wyszukiwania
                   _searchPanel(context),
+                  // Błąd API/sieci jeśli wystąpił
                   if (error != null)
                     Padding(
                       padding: const EdgeInsets.all(16),
                       child: Text(error!, style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
                     ),
+                  // Ilość znalezionych wyników
                   if (cars.isNotEmpty)
                     Padding(
                       padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 14),
@@ -302,6 +322,7 @@ class _CarCatalogScreenState extends State<CarCatalogScreen> {
                         style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.deepPurple, fontSize: 17),
                       ),
                     ),
+                  // Lista wyników jako karty z animacjami
                   if (cars.isNotEmpty)
                     ...cars.take(50).toList().asMap().entries.map((entry) {
                       final index = entry.key;
@@ -368,6 +389,7 @@ class _CarCatalogScreenState extends State<CarCatalogScreen> {
                         ),
                       );
                     }),
+                  // Komunikat, gdy brak wyników i brak błędów
                   if (!loading && cars.isEmpty && error == null)
                     const Padding(
                       padding: EdgeInsets.all(26),
@@ -382,7 +404,7 @@ class _CarCatalogScreenState extends State<CarCatalogScreen> {
     );
   }
 
-  /// --- DODAJ NOWĄ ZAKŁADKĘ "Serwis auta" w Drawerze ---
+  // Drawer (menu boczne) z nową zakładką "Serwis auta"
   Widget _buildDrawer(BuildContext ctx) {
     return Drawer(
       child: ListView(
@@ -423,7 +445,6 @@ class _CarCatalogScreenState extends State<CarCatalogScreen> {
               Navigator.of(ctx).pop();
             },
           ),
-          // NOWA ZAKŁADKA: Serwis auta
           ListTile(
             leading: const Icon(Icons.build),
             title: const Text('Serwis auta'),
@@ -438,7 +459,7 @@ class _CarCatalogScreenState extends State<CarCatalogScreen> {
     );
   }
 
-  /// --- DODAJ NOWĄ ZAKŁADKĘ "Serwis auta" w NavigationRail ---
+  // NavigationRail (panel boczny na desktopie) z zakładką "Serwis auta"
   Widget _buildRail(BuildContext ctx) {
     return NavigationRail(
       selectedIndex: _selectedIndex,
@@ -459,7 +480,7 @@ class _CarCatalogScreenState extends State<CarCatalogScreen> {
         NavigationRailDestination(icon: Icon(Icons.directions_car), label: Text('Samochody')),
         NavigationRailDestination(icon: Icon(Icons.local_gas_station), label: Text('Ceny paliw')),
         NavigationRailDestination(icon: Icon(Icons.search), label: Text('Katalog aut')),
-        NavigationRailDestination(icon: Icon(Icons.build), label: Text('Serwis auta')), // NOWA ZAKŁADKA
+        NavigationRailDestination(icon: Icon(Icons.build), label: Text('Serwis auta')), 
       ],
     );
   }
