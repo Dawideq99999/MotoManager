@@ -3,6 +3,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
 import 'package:fl_chart/fl_chart.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:printing/printing.dart';
 
 // GŁÓWNY EKRAN SERWISÓW I NAPRAW
 class CarServiceScreen extends StatefulWidget {
@@ -47,7 +49,9 @@ class _CarServiceScreenState extends State<CarServiceScreen> {
     'Inne',
   ];
 
-  // Ładowanie aut użytkownika po uruchomieniu ekranu
+  // Lista do PDF — aktualizowana z widoku historii!
+  List<Map<String, dynamic>> _serviceHistoryData = [];
+
   @override
   void initState() {
     super.initState();
@@ -82,16 +86,13 @@ class _CarServiceScreenState extends State<CarServiceScreen> {
   Future<void> _saveService() async {
     final cost = double.tryParse(_costCtl.text.replaceAll(',', '.'));
     if (cost == null) {
-      // Walidacja - sprawdź kwotę
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Podaj prawidłową kwotę')));
       return;
     }
     if (_selectedCarId == null) {
-      // Walidacja - wybierz samochód
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Wybierz samochód!')));
       return;
     }
-    // Dodaj wpis do kolekcji CarService w Firestore
     await _firestore.collection('CarService').add({
       'uid': _auth.currentUser!.uid,
       'type': _selectedType,
@@ -102,6 +103,79 @@ class _CarServiceScreenState extends State<CarServiceScreen> {
     _costCtl.clear();
     setState(() {}); // Odśwież widok
   }
+String asciiize(String? txt) {
+  if (txt == null) return '';
+  return txt
+      .replaceAll('ł', 'l').replaceAll('Ł', 'L')
+      .replaceAll('ą', 'a').replaceAll('Ą', 'A')
+      .replaceAll('ę', 'e').replaceAll('Ę', 'E')
+      .replaceAll('ś', 's').replaceAll('Ś', 'S')
+      .replaceAll('ć', 'c').replaceAll('Ć', 'C')
+      .replaceAll('ź', 'z').replaceAll('Ź', 'Z')
+      .replaceAll('ż', 'z').replaceAll('Ż', 'Z')
+      .replaceAll('ń', 'n').replaceAll('Ń', 'N')
+      .replaceAll('ó', 'o').replaceAll('Ó', 'O');
+}
+  // Funkcja PDF
+  Future<void> _generatePdfReport() async {
+    if (_serviceHistoryData.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Brak danych do wygenerowania PDF.')),
+      );
+      return;
+    }
+    final pdf = pw.Document();
+
+    pdf.addPage(
+      pw.MultiPage(
+        build: (context) => [
+          pw.Header(
+            level: 0,
+            child: pw.Text('Raport wydatków serwisowych', style: pw.TextStyle(fontSize: 22)),
+          ),
+          pw.SizedBox(height: 10),
+         pw.Table.fromTextArray(
+  headers: [
+    asciiize('Data'),
+    asciiize('Samochód'),
+    asciiize('Typ'),
+    asciiize('Koszt (zł)'),
+  ],
+  data: _serviceHistoryData.map((data) {
+    final date = DateFormat('yyyy-MM-dd').format((data['date'] as Timestamp).toDate());
+    final car = asciiize(_carNames[data['carId']] ?? 'Brak danych');
+    final type = asciiize(data['type']);
+    final cost = (data['cost'] as num).toStringAsFixed(2);
+    return [asciiize(date), car, type, cost];
+  }).toList(),
+),
+
+        ],
+      ),
+    );
+
+    await Printing.layoutPdf(onLayout: (format) async => pdf.save());
+  }
+
+  // PDF Button
+  Widget _buildPdfButton() {
+  // Przycisk jest nieaktywny dopóki lista PDF nie jest gotowa
+  return Padding(
+    padding: const EdgeInsets.all(16),
+    child: ElevatedButton.icon(
+      onPressed: _serviceHistoryData.isEmpty ? null : _generatePdfReport,
+      icon: const Icon(Icons.picture_as_pdf),
+      label: const Text('Pobierz raport PDF'),
+      style: ElevatedButton.styleFrom(
+        backgroundColor: Colors.redAccent,
+        foregroundColor: Colors.white,
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 20),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ),
+    ),
+  );
+}
+
 
   // GŁÓWNY WIDOK EKRANU
   @override
@@ -129,6 +203,7 @@ class _CarServiceScreenState extends State<CarServiceScreen> {
               child: ListView(
                 padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 0),
                 children: [
+                  _buildPdfButton(),     // <-- PRZYCISK PDF
                   _buildCarDropdown(),   // Dropdown wyboru auta
                   _buildFormCard(),      // Formularz dodawania wpisu serwisowego
                   const SizedBox(height: 22),
@@ -159,10 +234,11 @@ class _CarServiceScreenState extends State<CarServiceScreen> {
 
   // Dropdown do wyboru auta (lub wszystkich aut)
   Widget _buildCarDropdown() {
+    // Zamiast null dla wszystkich samochodów - pusty string
     return Padding(
       padding: const EdgeInsets.only(top: 5, left: 19, right: 19, bottom: 10),
       child: DropdownButtonFormField<String>(
-        value: _selectedCarId,
+        value: _selectedCarId ?? '',
         isExpanded: true,
         decoration: InputDecoration(
           labelText: 'Wybierz samochód',
@@ -172,7 +248,7 @@ class _CarServiceScreenState extends State<CarServiceScreen> {
         ),
         items: [
           DropdownMenuItem(
-            value: null,
+            value: '',
             child: Text('Wszystkie samochody', style: TextStyle(color: Colors.black54, fontWeight: FontWeight.w500)),
           ),
           ..._cars.map((car) => DropdownMenuItem(
@@ -180,7 +256,7 @@ class _CarServiceScreenState extends State<CarServiceScreen> {
                 child: Text('${car['Brand']} ${car['Model']} (${car['Year']})'),
               ))
         ],
-        onChanged: (val) => setState(() => _selectedCarId = val),
+        onChanged: (val) => setState(() => _selectedCarId = (val == '') ? null : val),
       ),
     );
   }
@@ -200,7 +276,6 @@ class _CarServiceScreenState extends State<CarServiceScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Dropdown z typami czynności serwisowych
                 DropdownButtonFormField<String>(
                   value: _selectedType,
                   decoration: const InputDecoration(
@@ -216,7 +291,6 @@ class _CarServiceScreenState extends State<CarServiceScreen> {
                   },
                 ),
                 const SizedBox(height: 12),
-                // Pole do wpisania kosztu
                 TextField(
                   controller: _costCtl,
                   keyboardType: const TextInputType.numberWithOptions(decimal: true),
@@ -227,7 +301,6 @@ class _CarServiceScreenState extends State<CarServiceScreen> {
                   ),
                 ),
                 const SizedBox(height: 12),
-                // Wiersz z datą, przyciskiem do wyboru daty i przyciskiem Dodaj
                 Row(
                   children: [
                     Icon(Icons.calendar_today, size: 19, color: Colors.deepPurple),
@@ -304,13 +377,25 @@ class _CarServiceScreenState extends State<CarServiceScreen> {
     );
   }
 
-  // Lista wpisów serwisowych (każdy wpis w osobnej karcie)
+  // Lista wpisów serwisowych (każdy wpis w osobnej karcie) + aktualizacja danych do PDF
   Widget _buildServiceList() {
     return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
       stream: _baseQuery().orderBy('date', descending: true).snapshots(),
       builder: (_, snap) {
         if (!snap.hasData) return const SizedBox();
         final docs = snap.data!.docs;
+
+        // UAKTUALNIJ DANE DO PDF
+        _serviceHistoryData = docs.map((d) {
+          final f = d.data();
+          return {
+            'type': f['type'],
+            'cost': f['cost'],
+            'date': f['date'],
+            'carId': f['carId'],
+          };
+        }).toList();
+
         if (docs.isEmpty) return const Padding(
           padding: EdgeInsets.all(16),
           child: Text('Brak wpisów.', style: TextStyle(color: Colors.black54)),
@@ -521,13 +606,11 @@ class _CarServiceScreenState extends State<CarServiceScreen> {
             ? sorted.skip(5).map((e) => e.value).fold(0.0, (a, b) => a + b)
             : 0.0;
 
-        // Lista kolorów do wykresu i legendy
         final List<Color> sectionColors = [
           ...List.generate(top.length, (i) => Colors.primaries[i * 3 % Colors.primaries.length].shade400),
           if (restSum > 0) Colors.grey.shade400,
         ];
 
-        // PieChart (tylko kolory, bez tekstów w środku)
         final pieSections = [
           for (int i = 0; i < top.length; i++)
             PieChartSectionData(
@@ -545,7 +628,6 @@ class _CarServiceScreenState extends State<CarServiceScreen> {
             ),
         ];
 
-        // Legenda: kolor + nazwa typu + suma w zł
         List<Widget> legendItems = [];
         for (int i = 0; i < top.length; i++) {
           legendItems.add(Padding(
@@ -622,7 +704,6 @@ class _CarServiceScreenState extends State<CarServiceScreen> {
           ));
         }
 
-        // Responsywność: legenda obok na szeroko, pod spodem na wąsko
         final isWide = MediaQuery.of(context).size.width > 580;
 
         return Padding(
@@ -631,7 +712,6 @@ class _CarServiceScreenState extends State<CarServiceScreen> {
               ? Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // PieChart (wykres kołowy)
                     SizedBox(
                       width: 160,
                       height: 170,
@@ -644,7 +724,6 @@ class _CarServiceScreenState extends State<CarServiceScreen> {
                       ),
                     ),
                     const SizedBox(width: 32),
-                    // Legenda
                     Expanded(
                       child: Padding(
                         padding: const EdgeInsets.only(top: 12),
