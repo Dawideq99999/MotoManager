@@ -14,9 +14,13 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final _emailCtl = TextEditingController();
   final _passCtl = TextEditingController();
   final _confirmCtl = TextEditingController();
-  bool _isLoading = false; // Flaga, czy trwa rejestracja (dla loadera)
 
-  // Sprzątamy kontrolery przy zamykaniu ekranu
+  bool _isLoading = false;
+
+  // Toggle hasła
+  bool _obscurePass = true;
+  bool _obscureConfirm = true;
+
   @override
   void dispose() {
     _emailCtl.dispose();
@@ -25,47 +29,65 @@ class _RegisterScreenState extends State<RegisterScreen> {
     super.dispose();
   }
 
-  // Funkcja rejestrująca użytkownika w Firebase
   Future<void> _register() async {
     final email = _emailCtl.text.trim();
     final pass = _passCtl.text;
     final confirm = _confirmCtl.text;
 
-    // Walidacja pól — czy wszystkie wypełnione?
     if (email.isEmpty || pass.isEmpty || confirm.isEmpty) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Wypełnij wszystkie pola.')));
+        const SnackBar(content: Text('Wypełnij wszystkie pola.')),
+      );
       return;
     }
-    // Czy hasła są identyczne?
+
+    if (pass.length < 6) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Hasło musi mieć minimum 6 znaków.')),
+      );
+      return;
+    }
+
     if (pass != confirm) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('Hasła nie są identyczne.')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Hasła nie są identyczne.')),
+      );
       return;
     }
 
     setState(() => _isLoading = true);
+
     try {
-      // Rejestrujemy przez Firebase
       await FirebaseAuth.instance.createUserWithEmailAndPassword(
-        email: email, password: pass,
+        email: email,
+        password: pass,
       );
+
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Zarejestrowano pomyślnie!')));
-      Navigator.pop(context); // Wróć na ekran logowania
+        const SnackBar(content: Text('Zarejestrowano pomyślnie!')),
+      );
+      Navigator.pop(context);
     } on FirebaseAuthException catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('Błąd: ${e.message}')));
+
+      String msg = 'Błąd: ${e.message ?? "Coś poszło nie tak"}';
+      if (e.code == 'email-already-in-use') msg = 'Ten email jest już zajęty.';
+      if (e.code == 'invalid-email') msg = 'Niepoprawny format emaila.';
+      if (e.code == 'weak-password') msg = 'Hasło jest za słabe (daj dłuższe).';
+
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
   }
 
-  // Budowanie widoku ekranu
+  void _togglePass() => setState(() => _obscurePass = !_obscurePass);
+  void _toggleConfirm() => setState(() => _obscureConfirm = !_obscureConfirm);
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -100,44 +122,78 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    // Logo lub ikona aplikacji
                     const Icon(Icons.car_repair, color: Color(0xFF0B3D91), size: 56),
                     const SizedBox(height: 10),
-                    const Text('Rejestracja',
-                        style: TextStyle(
-                            fontSize: 30, fontWeight: FontWeight.bold, color: Color(0xFF0B3D91))),
+                    const Text(
+                      'Rejestracja',
+                      style: TextStyle(
+                        fontSize: 30,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF0B3D91),
+                      ),
+                    ),
                     const SizedBox(height: 22),
-                    // Pole email
+
+                    // Email
                     TextField(
                       controller: _emailCtl,
                       decoration: _inputDecoration('Email', Icons.email),
                       keyboardType: TextInputType.emailAddress,
+                      textInputAction: TextInputAction.next,
+                      onSubmitted: (_) => FocusScope.of(context).nextFocus(),
                     ),
                     const SizedBox(height: 16),
-                    // Pole hasło
+
+                    // Hasło + 👁️
                     TextField(
                       controller: _passCtl,
-                      decoration: _inputDecoration('Hasło', Icons.lock),
-                      obscureText: true,
+                      decoration: _inputDecoration('Hasło', Icons.lock).copyWith(
+                        suffixIcon: IconButton(
+                          tooltip: _obscurePass ? 'Pokaż hasło' : 'Ukryj hasło',
+                          onPressed: _togglePass,
+                          icon: Icon(_obscurePass ? Icons.visibility : Icons.visibility_off),
+                        ),
+                      ),
+                      obscureText: _obscurePass,
+                      textInputAction: TextInputAction.next,
+                      onSubmitted: (_) => FocusScope.of(context).nextFocus(),
                     ),
                     const SizedBox(height: 16),
-                    // Pole powtórz hasło
+
+                    // Powtórz hasło + 👁️
                     TextField(
                       controller: _confirmCtl,
-                      decoration: _inputDecoration('Powtórz hasło', Icons.lock_outline),
-                      obscureText: true,
+                      decoration: _inputDecoration('Powtórz hasło', Icons.lock_outline).copyWith(
+                        suffixIcon: IconButton(
+                          tooltip: _obscureConfirm ? 'Pokaż hasło' : 'Ukryj hasło',
+                          onPressed: _toggleConfirm,
+                          icon: Icon(_obscureConfirm ? Icons.visibility : Icons.visibility_off),
+                        ),
+                      ),
+                      obscureText: _obscureConfirm,
+                      textInputAction: TextInputAction.done,
+                      onSubmitted: (_) => _isLoading ? null : _register(),
                     ),
                     const SizedBox(height: 24),
+
                     // Przycisk rejestracji
                     SizedBox(
                       width: double.infinity,
                       child: ElevatedButton.icon(
                         icon: _isLoading
                             ? const SizedBox(
-                                width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
                             : const Icon(Icons.app_registration, color: Colors.white),
-                        label: Text(_isLoading ? "Rejestruję..." : 'Zarejestruj się',
-                            style: const TextStyle(fontSize: 16)),
+                        label: Text(
+                          _isLoading ? "Rejestruję..." : 'Zarejestruj się',
+                          style: const TextStyle(fontSize: 16),
+                        ),
                         onPressed: _isLoading ? null : _register,
                         style: ElevatedButton.styleFrom(
                           backgroundColor: const Color(0xFF0B3D91),
@@ -147,6 +203,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       ),
                     ),
                     const SizedBox(height: 10),
+
                     // Link powrotu do logowania
                     TextButton(
                       onPressed: _isLoading ? null : () => Navigator.pop(context),
@@ -162,7 +219,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
     );
   }
 
-  // Dekoracja pól formularza (etykieta, ikona, itp.)
   InputDecoration _inputDecoration(String label, IconData icon) => InputDecoration(
         labelText: label,
         prefixIcon: Icon(icon),

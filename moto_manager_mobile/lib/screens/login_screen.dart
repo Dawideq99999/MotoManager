@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'register_screen.dart'; 
+import 'register_screen.dart';
 
 /// Główny ekran logowania użytkownika
 class LoginScreen extends StatefulWidget {
@@ -18,6 +18,9 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
   // Flaga ładowania (żeby np. zablokować przycisk na czas logowania)
   bool _isLoading = false;
 
+  // Toggle hasła
+  bool _obscurePass = true;
+
   // Animacja wejścia loga aplikacji
   late final AnimationController _animController;
   late final Animation<double> _scaleAnim;
@@ -30,17 +33,16 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
     _animController = AnimationController(
       duration: const Duration(milliseconds: 900),
       vsync: this,
-    )..forward(); // Uruchamiamy animację od razu
+    )..forward();
 
     _scaleAnim = CurvedAnimation(
       parent: _animController,
-      curve: Curves.elasticOut, // Efekt "odbicia" przy pojawianiu się
+      curve: Curves.elasticOut,
     );
   }
 
   @override
   void dispose() {
-    // Czyszczenie kontrolerów i animacji po zamknięciu ekranu
     _animController.dispose();
     _emailCtl.dispose();
     _passCtl.dispose();
@@ -54,35 +56,39 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
 
     // Walidacja czy pola nie są puste
     if (email.isEmpty || pass.isEmpty) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('Podaj email i hasło')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Podaj email i hasło')),
+      );
       return;
     }
 
-    setState(() => _isLoading = true); // Pokazujemy spinner na przycisku
+    setState(() => _isLoading = true);
 
     try {
-      // Próba logowania z użyciem Firebase Auth
       await FirebaseAuth.instance.signInWithEmailAndPassword(
         email: email,
         password: pass,
       );
 
-      // Po zalogowaniu przekierowanie na dashboard (bez możliwości cofnięcia)
+      if (!mounted) return;
       Navigator.pushReplacementNamed(context, '/dashboard');
     } on FirebaseAuthException {
-      // Jeśli logowanie nie powiedzie się — pokazujemy błąd
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Błąd: nieprawidłowe dane')));
+        const SnackBar(content: Text('Błąd: nieprawidłowe dane')),
+      );
     } finally {
-      setState(() => _isLoading = false); // Wyłączamy spinner
+      if (mounted) setState(() => _isLoading = false);
     }
+  }
+
+  void _togglePassword() {
+    setState(() => _obscurePass = !_obscurePass);
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      // Gradientowe tło aplikacji (niebieski w dwóch odcieniach)
       body: Container(
         decoration: const BoxDecoration(
           gradient: LinearGradient(
@@ -107,23 +113,20 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                   ),
                 ],
               ),
-
-              // Właściwa zawartość ekranu logowania
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  // Logo aplikacji z animacją skalowania
                   ScaleTransition(
                     scale: _scaleAnim,
                     child: Column(
-                      children: [
+                      children: const [
                         Icon(
                           Icons.directions_car_filled_rounded,
                           color: Color(0xFF0B3D91),
                           size: 54,
                         ),
-                        const SizedBox(height: 6),
-                        const Text(
+                        SizedBox(height: 6),
+                        Text(
                           'MotoManager',
                           style: TextStyle(
                             fontSize: 30,
@@ -142,23 +145,33 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                     controller: _emailCtl,
                     decoration: _inputDecoration('Email', Icons.email),
                     keyboardType: TextInputType.emailAddress,
+                    textInputAction: TextInputAction.next,
+                    onSubmitted: (_) => FocusScope.of(context).nextFocus(),
                   ),
                   const SizedBox(height: 18),
 
-                  // Pole hasło
+                  // Pole hasło z 👁️
                   TextField(
                     controller: _passCtl,
-                    decoration: _inputDecoration('Hasło', Icons.lock),
-                    obscureText: true,
+                    decoration: _inputDecoration('Hasło', Icons.lock).copyWith(
+                      suffixIcon: IconButton(
+                        tooltip: _obscurePass ? 'Pokaż hasło' : 'Ukryj hasło',
+                        onPressed: _togglePassword,
+                        icon: Icon(_obscurePass ? Icons.visibility : Icons.visibility_off),
+                      ),
+                    ),
+                    obscureText: _obscurePass,
+                    textInputAction: TextInputAction.done,
+                    onSubmitted: (_) => _isLoading ? null : _login(),
                   ),
                   const SizedBox(height: 30),
 
-                  // Przycisk logowania (z loaderem w trakcie działania)
+                  // Przycisk logowania
                   SizedBox(
                     width: double.infinity,
                     child: ElevatedButton.icon(
                       icon: const Icon(Icons.login),
-                      onPressed: _isLoading ? null : _login, // Blokujemy kliknięcie podczas logowania
+                      onPressed: _isLoading ? null : _login,
                       style: ElevatedButton.styleFrom(
                         backgroundColor: const Color.fromARGB(255, 231, 235, 243),
                         padding: const EdgeInsets.symmetric(vertical: 16),
@@ -184,7 +197,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                   ),
                   const SizedBox(height: 12),
 
-                  // Link do rejestracji konta
+                  // Link do rejestracji
                   TextButton(
                     onPressed: () {
                       Navigator.push(
@@ -214,6 +227,6 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
           borderRadius: BorderRadius.circular(14),
         ),
         filled: true,
-        fillColor: const Color.fromARGB(255, 240, 240, 241), // Jasne tło pól tekstowych
+        fillColor: const Color.fromARGB(255, 240, 240, 241),
       );
 }
