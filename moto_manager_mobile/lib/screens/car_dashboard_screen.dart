@@ -11,7 +11,8 @@ class CarDashboardScreen extends StatefulWidget {
 }
 
 // Klasa ze stanem (logika i zmienne ekranu)
-class _CarDashboardScreenState extends State<CarDashboardScreen> with TickerProviderStateMixin {
+class _CarDashboardScreenState extends State<CarDashboardScreen>
+    with TickerProviderStateMixin {
   // Referencje do baz danych Firebase
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
@@ -28,8 +29,12 @@ class _CarDashboardScreenState extends State<CarDashboardScreen> with TickerProv
   String? _selectedFuel; // Aktualnie wybrany rodzaj paliwa
 
   bool _isEditing = false; // Czy tryb edycji auta?
-  String? _editingDocId;   // ID edytowanego auta
-  int _selectedIndex = 0;  // Aktualna zakładka menu
+  String? _editingDocId; // ID edytowanego auta
+  int _selectedIndex = 0; // Aktualna zakładka menu
+
+  // KALENDARZYK (wybrane daty)
+  DateTime? _pickedInsuranceDate;
+  DateTime? _pickedServiceDate;
 
   // Kontrolery animacji (do efektu konfetti po dodaniu auta)
   late AnimationController _screenController;
@@ -66,7 +71,8 @@ class _CarDashboardScreenState extends State<CarDashboardScreen> with TickerProv
   Future<List<QueryDocumentSnapshot<Map<String, dynamic>>>> _fetchCars() async {
     final uid = _auth.currentUser?.uid;
     if (uid == null) return [];
-    final snap = await _firestore.collection('Cars').where('uid', isEqualTo: uid).get();
+    final snap =
+        await _firestore.collection('Cars').where('uid', isEqualTo: uid).get();
     return snap.docs;
   }
 
@@ -80,6 +86,58 @@ class _CarDashboardScreenState extends State<CarDashboardScreen> with TickerProv
     _selectedFuel = null;
     _isEditing = false;
     _editingDocId = null;
+
+    _pickedInsuranceDate = null;
+    _pickedServiceDate = null;
+  }
+
+  // Format daty YYYY-MM-DD (do Firestore i DateTime.parse)
+  String _fmtDate(DateTime d) {
+    final y = d.year.toString().padLeft(4, '0');
+    final m = d.month.toString().padLeft(2, '0');
+    final day = d.day.toString().padLeft(2, '0');
+    return '$y-$m-$day';
+  }
+
+  // Wybór daty z kalendarza
+  Future<void> _pickDate({
+    required TextEditingController controller,
+    required bool isInsurance,
+  }) async {
+    final now = DateTime.now();
+    final initial = isInsurance
+        ? (_pickedInsuranceDate ?? now)
+        : (_pickedServiceDate ?? now);
+
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: initial,
+      firstDate: DateTime(2000),
+      lastDate: DateTime(now.year + 10, 12, 31),
+      helpText:
+          isInsurance ? 'Wybierz datę ubezpieczenia' : 'Wybierz datę serwisu',
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: ColorScheme.fromSeed(
+              seedColor: const Color(0xFF0B3D91),
+            ),
+          ),
+          child: child!,
+        );
+      },
+    );
+
+    if (picked == null) return;
+
+    setState(() {
+      if (isInsurance) {
+        _pickedInsuranceDate = picked;
+      } else {
+        _pickedServiceDate = picked;
+      }
+      controller.text = _fmtDate(picked);
+    });
   }
 
   // Zapis auta do bazy (dodanie/edycja)
@@ -99,7 +157,17 @@ class _CarDashboardScreenState extends State<CarDashboardScreen> with TickerProv
         service.isEmpty ||
         year.isEmpty) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Wypełnij wszystkie pola!')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('Wypełnij wszystkie pola!')));
+      return;
+    }
+
+    // prosta walidacja dat (żeby parse działał)
+    if (DateTime.tryParse(insurance) == null || DateTime.tryParse(service) == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Wybierz poprawne daty z kalendarza.')),
+      );
       return;
     }
 
@@ -134,7 +202,8 @@ class _CarDashboardScreenState extends State<CarDashboardScreen> with TickerProv
       setState(() {});
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Błąd zapisu: $e')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('Błąd zapisu: $e')));
     }
   }
 
@@ -156,6 +225,10 @@ class _CarDashboardScreenState extends State<CarDashboardScreen> with TickerProv
       _selectedFuel = car['FuelType'];
       _isEditing = true;
       _editingDocId = docId;
+
+      // ustaw też wybrane daty (żeby DatePicker startował od aktualnej wartości)
+      _pickedInsuranceDate = DateTime.tryParse(_insuranceCtl.text);
+      _pickedServiceDate = DateTime.tryParse(_serviceCtl.text);
     } else {
       // Tryb dodawania: wyczyść pola
       _clear();
@@ -169,9 +242,11 @@ class _CarDashboardScreenState extends State<CarDashboardScreen> with TickerProv
         backgroundColor: const Color(0xFFF8FBFF),
         title: Row(
           children: [
-            Icon(_isEditing ? Icons.edit : Icons.add_circle, color: Color(0xFF0B3D91)),
+            Icon(_isEditing ? Icons.edit : Icons.add_circle,
+                color: const Color(0xFF0B3D91)),
             const SizedBox(width: 10),
-            Text(_isEditing ? 'Edytuj auto' : 'Dodaj auto', style: TextStyle(color: Color(0xFF0B3D91))),
+            Text(_isEditing ? 'Edytuj auto' : 'Dodaj auto',
+                style: const TextStyle(color: Color(0xFF0B3D91))),
           ],
         ),
         content: SingleChildScrollView(
@@ -179,12 +254,27 @@ class _CarDashboardScreenState extends State<CarDashboardScreen> with TickerProv
             _formTextField(_brandCtl, 'Marka', Icons.directions_car),
             _formTextField(_modelCtl, 'Model', Icons.directions_car_filled),
             _formTextField(_yearCtl, 'Rok', Icons.calendar_today),
-            _formTextField(_insuranceCtl, 'Data ubezpieczenia (YYYY-MM-DD)', Icons.verified_user),
-            _formTextField(_serviceCtl, 'Data serwisu (YYYY-MM-DD)', Icons.build),
+
+            // ✅ zamiast ręcznego wpisywania: kalendarzyk
+            _dateField(
+              controller: _insuranceCtl,
+              label: 'Data ubezpieczenia',
+              icon: Icons.verified_user,
+              onTap: () => _pickDate(controller: _insuranceCtl, isInsurance: true),
+            ),
+            _dateField(
+              controller: _serviceCtl,
+              label: 'Data serwisu',
+              icon: Icons.build,
+              onTap: () => _pickDate(controller: _serviceCtl, isInsurance: false),
+            ),
+
             const SizedBox(height: 10),
             DropdownButtonFormField<String>(
               value: _selectedFuel,
-              items: _fuelTypes.map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
+              items: _fuelTypes
+                  .map((e) => DropdownMenuItem(value: e, child: Text(e)))
+                  .toList(),
               decoration: const InputDecoration(
                 labelText: 'Rodzaj paliwa',
                 border: OutlineInputBorder(),
@@ -202,7 +292,7 @@ class _CarDashboardScreenState extends State<CarDashboardScreen> with TickerProv
           ElevatedButton(
             onPressed: _saveCar,
             style: ElevatedButton.styleFrom(
-              backgroundColor: Color(0xFF0B3D91),
+              backgroundColor: const Color(0xFF0B3D91),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             ),
             child: Text(_isEditing ? 'Zapisz' : 'Dodaj'),
@@ -222,6 +312,31 @@ class _CarDashboardScreenState extends State<CarDashboardScreen> with TickerProv
           labelText: label,
           border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
           prefixIcon: Icon(icon),
+          filled: true,
+          fillColor: Colors.white,
+        ),
+      ),
+    );
+  }
+
+  // ✅ pole daty z ikonką kalendarza (readOnly)
+  Widget _dateField({
+    required TextEditingController controller,
+    required String label,
+    required IconData icon,
+    required VoidCallback onTap,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: TextField(
+        controller: controller,
+        readOnly: true,
+        onTap: onTap,
+        decoration: InputDecoration(
+          labelText: label,
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+          prefixIcon: Icon(icon),
+          suffixIcon: const Icon(Icons.calendar_month),
           filled: true,
           fillColor: Colors.white,
         ),
@@ -264,8 +379,11 @@ class _CarDashboardScreenState extends State<CarDashboardScreen> with TickerProv
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          Icon(isCritical ? Icons.warning_amber_rounded : Icons.notifications_active,
-              color: isCritical ? Colors.red : Colors.orange, size: 22),
+          Icon(
+            isCritical ? Icons.warning_amber_rounded : Icons.notifications_active,
+            color: isCritical ? Colors.red : Colors.orange,
+            size: 22,
+          ),
           const SizedBox(width: 7),
           Expanded(
             child: Text(
@@ -282,8 +400,9 @@ class _CarDashboardScreenState extends State<CarDashboardScreen> with TickerProv
     );
   }
 
-  // Widget wyświetlający ramkę z autem – ELEGANCKI, PROFESJONALNY
-  Widget _buildCarCard(Map<String, dynamic> car, String docId, List<Widget> alerts) {
+  // Widget wyświetlający ramkę z autem
+  Widget _buildCarCard(
+      Map<String, dynamic> car, String docId, List<Widget> alerts) {
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 18, horizontal: 14),
       constraints: const BoxConstraints(maxWidth: 600),
@@ -294,7 +413,7 @@ class _CarDashboardScreenState extends State<CarDashboardScreen> with TickerProv
         child: Container(
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(32),
-            gradient: LinearGradient(
+            gradient: const LinearGradient(
               colors: [Color(0xFFF7FAFF), Color(0xFFD3E0F7), Color(0xFFE2E7F7)],
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
@@ -325,10 +444,9 @@ class _CarDashboardScreenState extends State<CarDashboardScreen> with TickerProv
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Ikona samochodu z gradientem
                     Container(
                       decoration: BoxDecoration(
-                        gradient: LinearGradient(
+                        gradient: const LinearGradient(
                           colors: [Color(0xFF8EB1FF), Color(0xFFD3E2FF)],
                           begin: Alignment.topLeft,
                           end: Alignment.bottomRight,
@@ -338,18 +456,18 @@ class _CarDashboardScreenState extends State<CarDashboardScreen> with TickerProv
                           BoxShadow(
                             color: Colors.indigo.withOpacity(0.23),
                             blurRadius: 12,
-                            offset: Offset(0, 4),
+                            offset: const Offset(0, 4),
                           ),
                         ],
                       ),
-                      child: CircleAvatar(
+                      child: const CircleAvatar(
                         radius: 32,
                         backgroundColor: Colors.transparent,
-                        child: Icon(Icons.directions_car, size: 37, color: Color(0xFF224EA9)),
+                        child: Icon(Icons.directions_car,
+                            size: 37, color: Color(0xFF224EA9)),
                       ),
                     ),
                     const SizedBox(width: 18),
-                    // Dane auta + ewentualne alerty
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -368,20 +486,22 @@ class _CarDashboardScreenState extends State<CarDashboardScreen> with TickerProv
                         ],
                       ),
                     ),
-                    // Akcje: edytuj, usuń
                     Column(
                       children: [
                         Tooltip(
                           message: 'Edytuj',
                           child: IconButton(
-                            icon: const Icon(Icons.edit, color: Color(0xFF3C6FE1)),
-                            onPressed: () => _showCarDialog(car: car, docId: docId),
+                            icon: const Icon(Icons.edit,
+                                color: Color(0xFF3C6FE1)),
+                            onPressed: () =>
+                                _showCarDialog(car: car, docId: docId),
                           ),
                         ),
                         Tooltip(
                           message: 'Usuń',
                           child: IconButton(
-                            icon: const Icon(Icons.delete, color: Color(0xFFE14242)),
+                            icon: const Icon(Icons.delete,
+                                color: Color(0xFFE14242)),
                             onPressed: () => _deleteCar(docId),
                           ),
                         ),
@@ -390,15 +510,17 @@ class _CarDashboardScreenState extends State<CarDashboardScreen> with TickerProv
                   ],
                 ),
                 const Divider(height: 22, color: Color(0xFFCBD8EF)),
-                // Dolny pasek – szczegóły auta
                 Wrap(
                   spacing: 24,
                   runSpacing: 10,
                   children: [
                     _buildCarDetailIcon(Icons.calendar_today, 'Rok', car['Year']),
-                    _buildCarDetailIcon(Icons.verified_user, 'Ubezp.', car['InsuranceDate']),
-                    _buildCarDetailIcon(Icons.build, 'Serwis', car['ServiceDate']),
-                    _buildCarDetailIcon(Icons.local_gas_station, 'Paliwo', car['FuelType']),
+                    _buildCarDetailIcon(
+                        Icons.verified_user, 'Ubezp.', car['InsuranceDate']),
+                    _buildCarDetailIcon(
+                        Icons.build, 'Serwis', car['ServiceDate']),
+                    _buildCarDetailIcon(
+                        Icons.local_gas_station, 'Paliwo', car['FuelType']),
                   ],
                 ),
               ],
@@ -409,7 +531,7 @@ class _CarDashboardScreenState extends State<CarDashboardScreen> with TickerProv
     );
   }
 
-  // Widget pojedynczego szczegółu auta z ikoną (np. rok, paliwo, itp.)
+  // Widget pojedynczego szczegółu auta z ikoną
   Widget _buildCarDetailIcon(IconData icon, String label, String? value) {
     return Row(
       mainAxisSize: MainAxisSize.min,
@@ -418,17 +540,19 @@ class _CarDashboardScreenState extends State<CarDashboardScreen> with TickerProv
         const SizedBox(width: 5),
         Text(
           '$label: ',
-          style: const TextStyle(fontWeight: FontWeight.w600, color: Color(0xFF5466AA)),
+          style: const TextStyle(
+              fontWeight: FontWeight.w600, color: Color(0xFF5466AA)),
         ),
         Text(
           value ?? '-',
-          style: const TextStyle(fontWeight: FontWeight.w500, color: Color(0xFF33477A)),
+          style: const TextStyle(
+              fontWeight: FontWeight.w500, color: Color(0xFF33477A)),
         ),
       ],
     );
   }
-  //FutureBuilder
-  // Główna lista aut użytkownika (ładne ramki, alerty, wszystko z mapowania)
+
+  // Główna lista aut użytkownika
   Widget _buildCarList() {
     return FutureBuilder<List<QueryDocumentSnapshot<Map<String, dynamic>>>>(
       future: _fetchCars(),
@@ -444,19 +568,17 @@ class _CarDashboardScreenState extends State<CarDashboardScreen> with TickerProv
           return const Center(child: Text('Brak samochodów'));
         }
 
-        // Mapowanie po autach – każda ramka z alertami
         return Center(
           child: SingleChildScrollView(
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                SizedBox(height: 32),
+                const SizedBox(height: 32),
                 ...cars.map((doc) {
                   final car = doc.data();
                   final insuranceLeft = _daysLeft(car['InsuranceDate'] ?? '');
                   final serviceLeft = _daysLeft(car['ServiceDate'] ?? '');
 
-                  // Tworzenie listy alertów (o kończących się terminach)
                   List<Widget> alerts = [];
                   if (insuranceLeft <= 14 && insuranceLeft >= 0) {
                     alerts.add(_buildAlert(
@@ -471,6 +593,7 @@ class _CarDashboardScreenState extends State<CarDashboardScreen> with TickerProv
                       isCritical: true,
                     ));
                   }
+
                   if (serviceLeft <= 14 && serviceLeft >= 0) {
                     alerts.add(_buildAlert(
                       serviceLeft == 0
@@ -485,10 +608,9 @@ class _CarDashboardScreenState extends State<CarDashboardScreen> with TickerProv
                     ));
                   }
 
-                  // Budowanie ramki dla jednego auta
                   return _buildCarCard(car, doc.id, alerts);
                 }),
-                SizedBox(height: 32),
+                const SizedBox(height: 32),
               ],
             ),
           ),
@@ -503,14 +625,20 @@ class _CarDashboardScreenState extends State<CarDashboardScreen> with TickerProv
       child: ListView(
         children: [
           DrawerHeader(
-            decoration: BoxDecoration(
+            decoration: const BoxDecoration(
               gradient: LinearGradient(
                 colors: [Color(0xFF0B3D91), Color(0xFF63A4FF)],
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
               ),
             ),
-            child: const Text('MotoManager', style: TextStyle(fontSize: 28, color: Colors.white, fontWeight: FontWeight.bold)),
+            child: const Text(
+              'MotoManager',
+              style: TextStyle(
+                  fontSize: 28,
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold),
+            ),
           ),
           ListTile(
             leading: const Icon(Icons.directions_car),
@@ -553,7 +681,7 @@ class _CarDashboardScreenState extends State<CarDashboardScreen> with TickerProv
     );
   }
 
-  // NavigationRail – menu boczne 
+  // NavigationRail – menu boczne
   NavigationRail _buildRail(BuildContext ctx) => NavigationRail(
         selectedIndex: _selectedIndex,
         onDestinationSelected: (index) {
@@ -570,14 +698,18 @@ class _CarDashboardScreenState extends State<CarDashboardScreen> with TickerProv
         },
         labelType: NavigationRailLabelType.selected,
         destinations: const [
-          NavigationRailDestination(icon: Icon(Icons.directions_car), label: Text('Samochody')),
-          NavigationRailDestination(icon: Icon(Icons.local_gas_station), label: Text('Ceny paliw')),
-          NavigationRailDestination(icon: Icon(Icons.search), label: Text('Katalog aut')),
-          NavigationRailDestination(icon: Icon(Icons.build_circle_outlined), label: Text('Serwis')),
+          NavigationRailDestination(
+              icon: Icon(Icons.directions_car), label: Text('Samochody')),
+          NavigationRailDestination(
+              icon: Icon(Icons.local_gas_station), label: Text('Ceny paliw')),
+          NavigationRailDestination(
+              icon: Icon(Icons.search), label: Text('Katalog aut')),
+          NavigationRailDestination(
+              icon: Icon(Icons.build_circle_outlined), label: Text('Serwis')),
         ],
       );
 
-  // ANIMACJA konfetti po dodaniu auta 
+  // ANIMACJA konfetti po dodaniu auta
   void _showEpicAnimation() async {
     _screenController.reset();
     _confettiController.reset();
@@ -593,7 +725,8 @@ class _CarDashboardScreenState extends State<CarDashboardScreen> with TickerProv
         return AnimatedBuilder(
           animation: Listenable.merge([_screenController, _confettiController]),
           builder: (ctx, _) {
-            double bounce = sin(_screenController.value * pi * 2) * (1 - _screenController.value) * 18;
+            double bounce =
+                sin(_screenController.value * pi * 2) * (1 - _screenController.value) * 18;
             double rot = sin(_screenController.value * pi) * 0.07;
 
             return Transform.translate(
@@ -643,7 +776,7 @@ class _CarDashboardScreenState extends State<CarDashboardScreen> with TickerProv
     if (mounted) Navigator.of(context).pop();
   }
 
-  // Tworzenie kolorowych "konfetti" (animacja po dodaniu auta)
+  // Tworzenie kolorowych "konfetti"
   List<Widget> _buildConfetti(double progress) {
     final List<Widget> confetti = [];
     final rnd = Random();
@@ -654,8 +787,8 @@ class _CarDashboardScreenState extends State<CarDashboardScreen> with TickerProv
       final y = sin(angle) * radius * (0.7 + rnd.nextDouble() * 0.5);
       final color = Colors.primaries[i % Colors.primaries.length].withOpacity(0.78);
       confetti.add(Positioned(
-        left:  MediaQuery.of(context).size.width / 2 + x - 8,
-        top:   MediaQuery.of(context).size.height / 2 + y - 8,
+        left: MediaQuery.of(context).size.width / 2 + x - 8,
+        top: MediaQuery.of(context).size.height / 2 + y - 8,
         child: Transform.rotate(
           angle: progress * 3 * pi * (i.isEven ? 1 : -1),
           child: Container(
@@ -676,7 +809,7 @@ class _CarDashboardScreenState extends State<CarDashboardScreen> with TickerProv
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      extendBodyBehindAppBar: true, // Gradient również za AppBar
+      extendBodyBehindAppBar: true,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
@@ -695,15 +828,20 @@ class _CarDashboardScreenState extends State<CarDashboardScreen> with TickerProv
           ),
         ),
         actions: [
-          IconButton(icon: const Icon(Icons.logout), color: Color(0xFF0B3D91), onPressed: _logout),
-          IconButton(icon: const Icon(Icons.add), color: Color(0xFF0B3D91), onPressed: () => _showCarDialog()),
+          IconButton(
+              icon: const Icon(Icons.logout),
+              color: const Color(0xFF0B3D91),
+              onPressed: _logout),
+          IconButton(
+              icon: const Icon(Icons.add),
+              color: const Color(0xFF0B3D91),
+              onPressed: () => _showCarDialog()),
         ],
         toolbarHeight: 74,
       ),
       drawer: _buildDrawer(context),
       body: Stack(
         children: [
-          // Gradientowe tło dla motoryzacyjnego klimatu
           Container(
             decoration: const BoxDecoration(
               gradient: LinearGradient(
